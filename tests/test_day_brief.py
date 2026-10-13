@@ -12,12 +12,13 @@ from day_brief.render import render_markdown
 class FakeCollector:
     def collect(self, *, days: int, mail_limit: int, task_limit: int):
         tz = ZoneInfo("America/Indianapolis")
+        today = datetime.now(tz).replace(hour=9, minute=0, second=0, microsecond=0)
         return (
             [
                 CalendarItem(
                     title="Standup",
-                    start_at=datetime(2026, 5, 19, 9, 0, tzinfo=tz),
-                    end_at=datetime(2026, 5, 19, 9, 30, tzinfo=tz),
+                    start_at=today,
+                    end_at=today + timedelta(minutes=30),
                 )
             ],
             [InboxItem(subject="Needs review", sender="Alex", is_read=False)],
