@@ -1,23 +1,38 @@
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
+import pytest
 from typer.testing import CliRunner
 
+from day_brief import planner
 from day_brief.cli import app
 from day_brief.models import CalendarItem, InboxItem, TaskItem
 from day_brief.planner import build_brief
 from day_brief.render import render_markdown
 
+FROZEN_NOW = datetime(2026, 10, 13, 12, 0, tzinfo=ZoneInfo("America/Indianapolis"))
+
+
+class FrozenDatetime(datetime):
+    @classmethod
+    def now(cls, tz=None):
+        return FROZEN_NOW.astimezone(tz)
+
+
+@pytest.fixture
+def frozen_clock(monkeypatch):
+    monkeypatch.setattr(planner, "datetime", FrozenDatetime)
+
 
 class FakeCollector:
     def collect(self, *, days: int, mail_limit: int, task_limit: int):
-        tz = ZoneInfo("America/Indianapolis")
+        today = FROZEN_NOW.replace(hour=9, minute=0)
         return (
             [
                 CalendarItem(
                     title="Standup",
-                    start_at=datetime(2026, 5, 19, 9, 0, tzinfo=tz),
-                    end_at=datetime(2026, 5, 19, 9, 30, tzinfo=tz),
+                    start_at=today,
+                    end_at=today + timedelta(minutes=30),
                 )
             ],
             [InboxItem(subject="Needs review", sender="Alex", is_read=False)],
@@ -45,7 +60,7 @@ def test_markdown_includes_schedule_watchlist_and_timeblocks():
     assert "Ship the daily brief" in output
 
 
-def test_cli_renders_json_from_collector(monkeypatch):
+def test_cli_renders_json_from_collector(monkeypatch, frozen_clock):
     monkeypatch.setattr("day_brief.cli.SourceCollector", lambda: FakeCollector())
     monkeypatch.setattr("day_brief.cli.get_localzone_name", lambda: "America/Indianapolis")
     runner = CliRunner()
@@ -58,7 +73,7 @@ def test_cli_renders_json_from_collector(monkeypatch):
     assert '"subject": "Needs review"' in result.stdout
 
 
-def test_cli_keeps_brief_subcommand(monkeypatch):
+def test_cli_keeps_brief_subcommand(monkeypatch, frozen_clock):
     monkeypatch.setattr("day_brief.cli.SourceCollector", lambda: FakeCollector())
     monkeypatch.setattr("day_brief.cli.get_localzone_name", lambda: "America/Indianapolis")
     runner = CliRunner()
