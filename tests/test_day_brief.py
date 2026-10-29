@@ -7,7 +7,7 @@ from typer.testing import CliRunner
 from day_brief import planner
 from day_brief.cli import app
 from day_brief.models import CalendarItem, InboxItem, TaskItem
-from day_brief.planner import build_brief
+from day_brief.planner import build_brief, suggest_timeblocks
 from day_brief.render import render_markdown
 
 FROZEN_NOW = datetime(2026, 10, 13, 12, 0, tzinfo=ZoneInfo("America/Indianapolis"))
@@ -137,3 +137,29 @@ def test_brief_normalizes_calendar_to_requested_timezone(frozen_clock, source_st
     assert brief.timeblocks[1].start_at.minute == 45
     assert event.start_at == start
     assert event.start_at.utcoffset() == start.utcoffset()
+
+
+@pytest.mark.parametrize("hour", [16, 17, 18])
+@pytest.mark.parametrize("has_inbox", [False, True])
+def test_evening_meetings_do_not_extend_suggested_workday(hour, has_inbox):
+    now = FROZEN_NOW.replace(hour=hour)
+    evening = CalendarItem(
+        title="Evening meeting",
+        start_at=now.replace(hour=20),
+        end_at=now.replace(hour=21),
+    )
+
+    blocks = suggest_timeblocks(
+        now,
+        [evening],
+        [InboxItem(subject="Review", sender="Alex")] if has_inbox else [],
+        [],
+    )
+
+    if hour >= 17:
+        assert blocks == []
+    else:
+        assert len(blocks) == 1
+        assert blocks[0].start_at == now
+        expected_end = now.replace(hour=16, minute=30) if has_inbox else now.replace(hour=17)
+        assert blocks[0].end_at == expected_end

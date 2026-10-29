@@ -77,7 +77,9 @@ def suggest_timeblocks(
     fixed = [
         item
         for item in sorted(calendar, key=lambda event: event.start_at)
-        if item.end_at > cursor and item.start_at.date() == now.date()
+        if item.end_at > cursor
+        and item.start_at < day_end
+        and item.start_at.date() == now.date()
     ]
     for event in fixed:
         if event.start_at - cursor >= timedelta(minutes=45):
