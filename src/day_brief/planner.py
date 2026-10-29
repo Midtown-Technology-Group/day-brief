@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime, time, timedelta
+from datetime import datetime, time, timedelta, timezone
 from zoneinfo import ZoneInfo
 
 from .models import CalendarItem, DayBrief, InboxItem, TaskItem, TimeBlock
@@ -18,8 +18,17 @@ def build_brief(
     tz = ZoneInfo(timezone_name)
     now = datetime.now(tz)
     calendar = sorted(
-        [item for item in calendar if item.start_at.astimezone(tz).date() == now.date()],
-        key=lambda item: item.start_at,
+        [
+            item.model_copy(
+                update={
+                    "start_at": item.start_at.astimezone(tz),
+                    "end_at": item.end_at.astimezone(tz),
+                }
+            )
+            for item in calendar
+            if item.start_at.astimezone(tz).date() == now.date()
+        ],
+        key=lambda item: item.start_at.timestamp(),
     )
     priorities = suggest_priorities(calendar, inbox, tasks)
     timeblocks = suggest_timeblocks(now, calendar, inbox, tasks) if include_timeblocks else []
@@ -61,22 +70,38 @@ def suggest_timeblocks(
     inbox: list[InboxItem],
     tasks: list[TaskItem],
 ) -> list[TimeBlock]:
-    day_start = datetime.combine(now.date(), time(8, 30), tzinfo=now.tzinfo)
-    day_end = datetime.combine(now.date(), time(17, 0), tzinfo=now.tzinfo)
-    cursor = max(now.replace(second=0, microsecond=0), day_start)
+    # Keep local workday boundaries, but compare and add elapsed durations in UTC.
+    # Same-ZoneInfo datetime arithmetic ignores fold during a repeated hour.
+    day_start = datetime.combine(now.date(), time(8, 30), tzinfo=now.tzinfo).astimezone(
+        timezone.utc
+    )
+    day_end = datetime.combine(now.date(), time(17, 0), tzinfo=now.tzinfo).astimezone(timezone.utc)
+    cursor = max(now.replace(second=0, microsecond=0).astimezone(timezone.utc), day_start)
     blocks: list[TimeBlock] = []
     fixed = [
         item
-        for item in sorted(calendar, key=lambda event: event.start_at)
-        if item.end_at > cursor and item.start_at.date() == now.date()
+        for item in sorted(calendar, key=lambda event: event.start_at.timestamp())
+        if item.end_at.astimezone(timezone.utc) > cursor
+        and item.start_at.astimezone(timezone.utc) < day_end
+        and item.start_at.astimezone(now.tzinfo).date() == now.date()
     ]
     for event in fixed:
-        if event.start_at - cursor >= timedelta(minutes=45):
-            blocks.extend(_blocks_for_gap(cursor, event.start_at, inbox, tasks))
-        cursor = max(cursor, event.end_at + timedelta(minutes=15))
+        event_start = event.start_at.astimezone(timezone.utc)
+        event_end = event.end_at.astimezone(timezone.utc)
+        if event_start - cursor >= timedelta(minutes=45):
+            blocks.extend(_blocks_for_gap(cursor, event_start, inbox, tasks))
+        cursor = max(cursor, event_end + timedelta(minutes=15))
     if day_end - cursor >= timedelta(minutes=45):
         blocks.extend(_blocks_for_gap(cursor, day_end, inbox, tasks))
-    return blocks[:4]
+    return [
+        block.model_copy(
+            update={
+                "start_at": block.start_at.astimezone(now.tzinfo),
+                "end_at": block.end_at.astimezone(now.tzinfo),
+            }
+        )
+        for block in blocks[:4]
+    ]
 
 
 def _blocks_for_gap(
@@ -85,11 +110,13 @@ def _blocks_for_gap(
     inbox: list[InboxItem],
     tasks: list[TaskItem],
 ) -> list[TimeBlock]:
-    duration = end - start
+    utc_start = start.astimezone(timezone.utc)
+    utc_end = end.astimezone(timezone.utc)
+    duration = utc_end - utc_start
     if duration < timedelta(minutes=45):
         return []
     if inbox:
-        mail_end = min(start + timedelta(minutes=30), end)
+        mail_end = min(utc_start + timedelta(minutes=30), utc_end).astimezone(start.tzinfo)
         return [
             TimeBlock(
                 start_at=start,
