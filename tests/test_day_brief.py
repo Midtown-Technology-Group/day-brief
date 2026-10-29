@@ -10,7 +10,7 @@ from day_brief.models import CalendarItem, InboxItem, TaskItem
 from day_brief.planner import build_brief, suggest_timeblocks
 from day_brief.render import render_markdown
 
-FROZEN_NOW = datetime(2026, 10, 13, 12, 0, tzinfo=ZoneInfo("America/Indianapolis"))
+FROZEN_NOW = datetime(2026, 10, 13, 12, 0, tzinfo=ZoneInfo("America/Indiana/Indianapolis"))
 
 
 class FrozenDatetime(datetime):
@@ -42,7 +42,7 @@ class FakeCollector:
 
 
 def test_markdown_includes_schedule_watchlist_and_timeblocks():
-    tz = "America/Indianapolis"
+    tz = "America/Indiana/Indianapolis"
     brief = build_brief(
         timezone_name=tz,
         calendar=[],
@@ -62,20 +62,20 @@ def test_markdown_includes_schedule_watchlist_and_timeblocks():
 
 def test_cli_renders_json_from_collector(monkeypatch, frozen_clock):
     monkeypatch.setattr("day_brief.cli.SourceCollector", lambda: FakeCollector())
-    monkeypatch.setattr("day_brief.cli.get_localzone_name", lambda: "America/Indianapolis")
+    monkeypatch.setattr("day_brief.cli.get_localzone_name", lambda: "America/Indiana/Indianapolis")
     runner = CliRunner()
 
     result = runner.invoke(app, ["brief", "--output", "json", "--timeblocks"])
 
     assert result.exit_code == 0
-    assert '"timezone": "America/Indianapolis"' in result.stdout
+    assert '"timezone": "America/Indiana/Indianapolis"' in result.stdout
     assert '"title": "Standup"' in result.stdout
     assert '"subject": "Needs review"' in result.stdout
 
 
 def test_cli_keeps_brief_subcommand(monkeypatch, frozen_clock):
     monkeypatch.setattr("day_brief.cli.SourceCollector", lambda: FakeCollector())
-    monkeypatch.setattr("day_brief.cli.get_localzone_name", lambda: "America/Indianapolis")
+    monkeypatch.setattr("day_brief.cli.get_localzone_name", lambda: "America/Indiana/Indianapolis")
     runner = CliRunner()
 
     result = runner.invoke(app, ["brief", "--output", "markdown"])
@@ -85,9 +85,9 @@ def test_cli_keeps_brief_subcommand(monkeypatch, frozen_clock):
 
 
 def test_brief_filters_calendar_to_local_today():
-    tz = ZoneInfo("America/Indianapolis")
+    tz = ZoneInfo("America/Indiana/Indianapolis")
     brief = build_brief(
-        timezone_name="America/Indianapolis",
+        timezone_name="America/Indiana/Indianapolis",
         calendar=[
             CalendarItem(
                 title="Today",
@@ -121,7 +121,7 @@ def test_brief_normalizes_calendar_to_requested_timezone(frozen_clock, source_st
         title="Afternoon meeting", start_at=start, end_at=start + timedelta(minutes=30)
     )
     brief = build_brief(
-        timezone_name="America/Indianapolis",
+        timezone_name="America/Indiana/Indianapolis",
         calendar=[event],
         inbox=[],
         tasks=[],
