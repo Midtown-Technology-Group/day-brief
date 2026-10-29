@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta
+from datetime import datetime, time, timedelta
 from zoneinfo import ZoneInfo
 
 import pytest
@@ -7,7 +7,7 @@ from typer.testing import CliRunner
 from day_brief import planner
 from day_brief.cli import app
 from day_brief.models import CalendarItem, InboxItem, TaskItem
-from day_brief.planner import build_brief, suggest_timeblocks
+from day_brief.planner import _blocks_for_gap, build_brief, suggest_timeblocks
 from day_brief.render import render_markdown
 
 FROZEN_NOW = datetime(2026, 10, 13, 12, 0, tzinfo=ZoneInfo("America/Indiana/Indianapolis"))
@@ -163,3 +163,61 @@ def test_evening_meetings_do_not_extend_suggested_workday(hour, has_inbox):
         assert blocks[0].start_at == now
         expected_end = now.replace(hour=16, minute=30) if has_inbox else now.replace(hour=17)
         assert blocks[0].end_at == expected_end
+
+
+def test_brief_sorts_repeated_hour_by_instant(monkeypatch, frozen_clock):
+    tz = ZoneInfo("America/Indiana/Indianapolis")
+    monkeypatch.setattr(__name__ + ".FROZEN_NOW", datetime(2026, 11, 1, 12, tzinfo=tz))
+    first = CalendarItem(
+        title="First hour",
+        start_at="2026-11-01T01:45:00-04:00",
+        end_at="2026-11-01T01:50:00-04:00",
+    )
+    second = CalendarItem(
+        title="Second hour",
+        start_at="2026-11-01T01:15:00-05:00",
+        end_at="2026-11-01T01:20:00-05:00",
+    )
+    brief = build_brief(
+        timezone_name=tz.key, calendar=[second, first], inbox=[], tasks=[],
+        errors=[], include_timeblocks=True,
+    )
+    assert [item.title for item in brief.calendar] == ["First hour", "Second hour"]
+    assert [item.start_at.fold for item in brief.calendar] == [0, 1]
+
+
+@pytest.mark.parametrize("has_inbox", [False, True])
+def test_gap_uses_elapsed_time_across_repeated_hour(has_inbox):
+    tz = ZoneInfo("America/Indiana/Indianapolis")
+    start = datetime(2026, 11, 1, 1, 45, tzinfo=tz, fold=0)
+    end = datetime(2026, 11, 1, 1, 30, tzinfo=tz, fold=1)
+    blocks = _blocks_for_gap(
+        start, end, [InboxItem(subject="Review", sender="Alex")] if has_inbox else [], []
+    )
+    assert len(blocks) == 1
+    assert blocks[0].start_at.timestamp() == start.timestamp()
+    assert blocks[0].end_at.timestamp() == start.timestamp() + (1800 if has_inbox else 2700)
+    assert blocks[0].end_at.fold == 1
+
+
+@pytest.mark.parametrize("minute,fold", [(50, 0), (5, 1)])
+def test_timeblocks_preserve_elapsed_buffers_during_repeated_hour(monkeypatch, minute, fold):
+    tz = ZoneInfo("America/Indiana/Indianapolis")
+    # Move the work window over the real DST transition to exercise planner arithmetic.
+    monkeypatch.setattr(planner, "time", lambda hour, minute: time(0, 30) if hour == 8 else time(3))
+    now = datetime(2026, 11, 1, 1, minute, tzinfo=tz, fold=fold)
+    events = [
+        CalendarItem(
+            title="Second hour", start_at=datetime(2026, 11, 1, 1, 15, tzinfo=tz, fold=1),
+            end_at=datetime(2026, 11, 1, 1, 20, tzinfo=tz, fold=1),
+        ),
+        CalendarItem(
+            title="First hour", start_at=datetime(2026, 11, 1, 1, 45, tzinfo=tz),
+            end_at=datetime(2026, 11, 1, 1, 55, tzinfo=tz),
+        ),
+    ]
+    blocks = suggest_timeblocks(now, events, [], [])
+    assert len(blocks) == 1
+    expected = datetime(2026, 11, 1, 1, 35, tzinfo=tz, fold=1)
+    assert blocks[0].start_at.timestamp() == expected.timestamp()
+    assert blocks[0].end_at.timestamp() == datetime(2026, 11, 1, 3, tzinfo=tz).timestamp()
