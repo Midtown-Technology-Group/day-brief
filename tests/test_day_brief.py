@@ -109,3 +109,31 @@ def test_brief_filters_calendar_to_local_today():
     )
 
     assert [item.title for item in brief.calendar] == ["Today"]
+
+
+@pytest.mark.parametrize(
+    "source_start",
+    ["2026-10-13T18:00:00+00:00", "2026-10-14T08:00:00+14:00"],
+)
+def test_brief_normalizes_calendar_to_requested_timezone(frozen_clock, source_start):
+    start = datetime.fromisoformat(source_start)
+    event = CalendarItem(
+        title="Afternoon meeting", start_at=start, end_at=start + timedelta(minutes=30)
+    )
+    brief = build_brief(
+        timezone_name="America/Indianapolis",
+        calendar=[event],
+        inbox=[],
+        tasks=[],
+        errors=[],
+        include_timeblocks=True,
+    )
+
+    assert "- 2:00 PM - 2:30 PM: Afternoon meeting" in render_markdown(brief)
+    assert brief.calendar[0].start_at.isoformat() == "2026-10-13T14:00:00-04:00"
+    assert [(block.start_at.hour, block.end_at.hour) for block in brief.timeblocks] == [
+        (12, 14), (14, 17)
+    ]
+    assert brief.timeblocks[1].start_at.minute == 45
+    assert event.start_at == start
+    assert event.start_at.utcoffset() == start.utcoffset()

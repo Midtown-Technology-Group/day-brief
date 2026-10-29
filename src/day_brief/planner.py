@@ -18,7 +18,16 @@ def build_brief(
     tz = ZoneInfo(timezone_name)
     now = datetime.now(tz)
     calendar = sorted(
-        [item for item in calendar if item.start_at.astimezone(tz).date() == now.date()],
+        [
+            item.model_copy(
+                update={
+                    "start_at": item.start_at.astimezone(tz),
+                    "end_at": item.end_at.astimezone(tz),
+                }
+            )
+            for item in calendar
+            if item.start_at.astimezone(tz).date() == now.date()
+        ],
         key=lambda item: item.start_at,
     )
     priorities = suggest_priorities(calendar, inbox, tasks)
