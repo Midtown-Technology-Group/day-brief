@@ -7,3 +7,12 @@ This repo contains a read-only daily brief CLI for local Midtown operator workfl
 - Keep child tool calls explicit and JSON-based.
 - Avoid storing live report output, customer data, access tokens, or local cache files in the repo.
 - Run `.\scripts\smoke.ps1` before claiming the repo is healthy.
+
+## Secret gate before publication
+
+Before every push and PR creation/update, commit the complete candidate and run
+`python3 scripts/secret_gate.py` (native Windows: `python`). Require exit 0;
+missing tooling/authentication, scan errors and skipped scans block publication.
+Then run the existing repository gates. Repeat after changing outgoing commits.
+See [secret scanning](SECRET-SCANNING.md) for base selection, new branches,
+pre-push input and prerequisites. Preserve GitGuardian App, CI and Gitleaks checks.
