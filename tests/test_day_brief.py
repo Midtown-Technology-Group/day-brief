@@ -41,7 +41,7 @@ class FakeCollector:
         )
 
 
-def test_markdown_includes_schedule_watchlist_and_timeblocks():
+def test_markdown_includes_schedule_watchlist_and_timeblocks(frozen_clock):
     tz = "America/Indiana/Indianapolis"
     brief = build_brief(
         timezone_name=tz,
